@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "gendb": "node scripts/rebuild_imdb.js",
+    "play": "node js/cli.js",
     "format": "prettier --write \"**/*.js\"",
     "lint": "eslint \"**/*.js\""
   },
