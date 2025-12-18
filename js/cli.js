@@ -3,7 +3,8 @@
 /**
  * CLI Playtester for MovieActor game
  *
- * A simple readline-based interface for playing the MovieActor game.
+ * A natural language friendly interface for playing the MovieActor game.
+ * Designed to be playable via voice input.
  */
 
 import { createInterface } from "readline"
@@ -17,6 +18,70 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const DB_PATH = join(__dirname, "..", "data", "imdb.db")
 
+/**
+ * Detect if input is a challenge command
+ * Only "challenge" is a special command during gameplay to avoid ambiguity with movie/actor names
+ */
+function isChallenge(input) {
+    const lower = input.toLowerCase().trim()
+    return lower === "challenge" || lower === "i challenge" || lower === "i challenge you"
+}
+
+/**
+ * Detect yes/no for play again prompt
+ */
+function detectYesNo(input) {
+    const lower = input.toLowerCase().trim()
+
+    // Yes patterns
+    if (/^(yes|yeah|yep|sure|ok|okay|absolutely|definitely|let'?s\s+(do\s+it|go|play))/.test(lower) || lower === "y") {
+        return "yes"
+    }
+
+    // No patterns
+    if (/^(no|nah|nope|i'?m\s+good|no\s+thanks|not\s+right\s+now)/.test(lower) || lower === "n") {
+        return "no"
+    }
+
+    return null
+}
+
+/**
+ * Detect difficulty from natural language input
+ */
+function detectDifficulty(input) {
+    const lower = input.toLowerCase().trim()
+
+    // Easy patterns
+    if (
+        /\b(easy|simple|beginner|casual|relaxed|chill|laid\s*back)\b/.test(lower) ||
+        lower === "1" ||
+        /^(one|first)$/.test(lower)
+    ) {
+        return DIFFICULTY.EASY
+    }
+
+    // Hard patterns
+    if (
+        /\b(hard|difficult|tough|challenging|expert|intense|brutal)\b/.test(lower) ||
+        lower === "3" ||
+        /^(three|third)$/.test(lower)
+    ) {
+        return DIFFICULTY.HARD
+    }
+
+    // Medium patterns (default fallback for anything reasonable)
+    if (
+        /\b(medium|normal|moderate|regular|standard|average|middle)\b/.test(lower) ||
+        lower === "2" ||
+        /^(two|second)$/.test(lower)
+    ) {
+        return DIFFICULTY.MEDIUM
+    }
+
+    return null
+}
+
 class CLI {
     constructor() {
         this.game = null
@@ -27,7 +92,7 @@ class CLI {
     async run() {
         // Check database exists
         if (!existsSync(DB_PATH)) {
-            console.log("\nError: Database not found at", DB_PATH)
+            console.log("\nDatabase not found at", DB_PATH)
             console.log("Run 'npm run gendb' to build the database first.\n")
             process.exit(1)
         }
@@ -58,55 +123,40 @@ class CLI {
     showWelcome() {
         console.log()
         console.log("=".repeat(50))
-        console.log("           MOVIE / ACTOR GAME")
+        console.log("           MOVIE / ACTOR")
         console.log("=".repeat(50))
         console.log()
         console.log("Take turns naming movies and actors!")
-        console.log("  - If shown an ACTOR, name a movie they were in")
-        console.log("  - If shown a MOVIE, name an actor from it")
-        console.log("  - First to win 5 rounds wins the game")
-        console.log()
-        console.log("Commands:")
-        console.log("  challenge (or c) - Challenge when you're stuck")
-        console.log("  restart (or r)   - Restart the game")
-        console.log("  hint (or h)      - Show a hint")
-        console.log("  used (or u)      - Show used items this round")
-        console.log("  score (or s)     - Show current score")
-        console.log("  quit (or q)      - Exit the game")
+        console.log("If you get stuck, say \"challenge\"")
+        console.log("First to win 5 rounds wins.")
         console.log()
     }
 
     async selectDifficulty() {
-        console.log("Select difficulty:")
-        console.log("  1. Easy   - Computer only knows top-billed actors")
-        console.log("  2. Medium - Computer knows top 10 billed actors")
-        console.log("  3. Hard   - Computer knows entire cast")
+        console.log("How difficult would you like the game?")
+        console.log("  Easy   - Computer only knows the stars")
+        console.log("  Medium - Computer knows supporting cast too")
+        console.log("  Hard   - Computer knows everyone")
         console.log()
 
         while (true) {
-            const answer = await this.prompt("Difficulty (1-3): ")
-            const choice = answer.trim()
+            const answer = await this.prompt("Difficulty: ")
+            const difficulty = detectDifficulty(answer)
 
-            if (choice === "1" || choice.toLowerCase() === "easy") {
-                console.log("\nDifficulty: Easy\n")
-                return DIFFICULTY.EASY
-            } else if (choice === "2" || choice.toLowerCase() === "medium") {
-                console.log("\nDifficulty: Medium\n")
-                return DIFFICULTY.MEDIUM
-            } else if (choice === "3" || choice.toLowerCase() === "hard") {
-                console.log("\nDifficulty: Hard\n")
-                return DIFFICULTY.HARD
+            if (difficulty) {
+                const label = difficulty.charAt(0).toUpperCase() + difficulty.slice(1)
+                console.log(`\n${label} it is!\n`)
+                return difficulty
             }
 
-            console.log("Please enter 1, 2, or 3")
+            console.log("I didn't catch that. Try saying easy, medium, or hard.")
         }
     }
 
     async gameLoop() {
         // Start the game
         let result = this.game.startGame()
-        console.log(result.message)
-        console.log()
+        this.announceStart(result)
 
         while (true) {
             const state = this.game.getState()
@@ -115,38 +165,38 @@ class CLI {
                 console.log()
                 console.log("=".repeat(50))
                 if (state.winner === PLAYER.HUMAN) {
-                    console.log("  CONGRATULATIONS! YOU WIN!")
+                    console.log("  YOU WIN!")
                 } else {
-                    console.log("  GAME OVER - Computer wins!")
+                    console.log("  Computer wins this time.")
                 }
-                console.log("  Final Score: You", state.scores[PLAYER.HUMAN], "- Computer", state.scores[PLAYER.COMPUTER])
+                console.log(`  Final: You ${state.scores[PLAYER.HUMAN]} - Computer ${state.scores[PLAYER.COMPUTER]}`)
                 console.log("=".repeat(50))
                 console.log()
 
-                const playAgain = await this.prompt("Play again? (y/n): ")
-                if (playAgain.toLowerCase().startsWith("y")) {
-                    result = this.game.restart()
-                    console.log()
-                    console.log(result.message)
-                    console.log()
-                    continue
-                } else {
+                const playAgain = await this.prompt("Want to play again? ")
+                const answer = detectYesNo(playAgain)
+
+                if (answer === "no") {
                     break
                 }
+                // Anything other than explicit "no" means yes
+                result = this.game.restart()
+                console.log()
+                this.announceStart(result)
+                continue
             }
 
             if (state.state === GAME_STATE.ROUND_OVER) {
                 console.log()
-                await this.prompt("Press Enter to start next round...")
+                await this.prompt("Ready for the next round? ")
                 result = this.game.nextRound()
                 console.log()
-                console.log(result.message)
-                console.log()
+                this.announceStart(result)
                 continue
             }
 
             // Show current state
-            this.displayState(state)
+            this.displayPrompt(state)
 
             // Get player input
             const input = await this.prompt("> ")
@@ -154,164 +204,116 @@ class CLI {
 
             if (!trimmed) continue
 
-            // Handle special commands
-            const command = trimmed.toLowerCase()
-
-            if (command === "quit" || command === "q") {
-                console.log("\nThanks for playing!\n")
-                break
-            }
-
-            if (command === "restart" || command === "r") {
-                console.log("\nRestarting game...\n")
-                result = this.game.restart()
-                console.log(result.message)
-                console.log()
-                continue
-            }
-
-            if (command === "challenge" || command === "c") {
+            // Check for challenge command
+            if (isChallenge(trimmed)) {
                 result = this.game.humanChallenge()
                 console.log()
-                console.log(result.message)
-                console.log()
+                this.announceChallenge(result)
                 continue
             }
 
-            if (command === "hint" || command === "h") {
-                this.showHint(state)
-                continue
-            }
-
-            if (command === "used" || command === "u") {
-                this.showUsed(state)
-                continue
-            }
-
-            if (command === "score" || command === "s") {
-                console.log(`\nScore: You ${state.scores[PLAYER.HUMAN]} - Computer ${state.scores[PLAYER.COMPUTER]}\n`)
-                continue
-            }
-
-            if (command === "help" || command === "?") {
-                this.showHelp()
-                continue
-            }
-
-            // Regular move
+            // Otherwise treat as movie/actor answer
             result = this.game.humanMove(trimmed)
             console.log()
-            console.log(result.message)
 
             if (result.success) {
+                this.announceCorrect(result)
+
                 // Computer's turn
                 console.log()
-                console.log("Computer is thinking...")
-                await this.delay(500 + Math.random() * 1000) // Simulate thinking
+                await this.delay(500 + Math.random() * 1000)
 
                 const computerResult = this.game.computerMove()
-                console.log(computerResult.message)
+                this.announceComputerMove(computerResult)
+            } else {
+                this.announceIncorrect(result)
             }
-
             console.log()
         }
 
         this.cleanup()
     }
 
-    displayState(state) {
-        console.log("-".repeat(50))
-        console.log(
-            `Round ${state.roundNumber} | Score: You ${state.scores[PLAYER.HUMAN]} - Computer ${state.scores[PLAYER.COMPUTER]} | ${state.difficulty.toUpperCase()}`
-        )
-        console.log("-".repeat(50))
+    announceStart(result) {
+        if (result.startingItemType === ITEM_TYPE.ACTOR) {
+            console.log(`Let's start with ${result.startingItem.primary_name}.`)
+            console.log("Name a movie they were in.")
+        } else {
+            const year = result.startingItem.start_year ? ` from ${result.startingItem.start_year}` : ""
+            console.log(`Let's start with "${result.startingItem.primary_title}"${year}.`)
+            console.log("Name an actor from that movie.")
+        }
+        console.log()
+    }
+
+    displayPrompt(state) {
+        const scores = `You ${state.scores[PLAYER.HUMAN]} - Computer ${state.scores[PLAYER.COMPUTER]}`
+        console.log(`[Round ${state.roundNumber} | ${scores}]`)
 
         if (state.currentItemType === ITEM_TYPE.MOVIE) {
-            const movie = state.currentItem
-            console.log(`Current: MOVIE - "${movie.primary_title}" (${movie.start_year})`)
-            console.log("Your turn: Name an actor from this movie")
+            const year = state.currentItem.start_year ? ` (${state.currentItem.start_year})` : ""
+            console.log(`The movie is "${state.currentItem.primary_title}"${year}`)
         } else {
-            const actor = state.currentItem
-            const years = actor.birth_year ? ` (b. ${actor.birth_year})` : ""
-            console.log(`Current: ACTOR - ${actor.primary_name}${years}`)
-            console.log("Your turn: Name a movie with this actor")
+            console.log(`The actor is ${state.currentItem.primary_name}`)
         }
-        console.log()
     }
 
-    showHint(state) {
-        console.log("\nSearching for hints...\n")
+    announceCorrect(result) {
+        const item = result.matchedItem
+        if (result.nextItemType === ITEM_TYPE.ACTOR) {
+            // They named an actor
+            console.log(`Yes! ${item.primary_name}.`)
+        } else {
+            // They named a movie
+            const year = item.start_year ? ` (${item.start_year})` : ""
+            console.log(`Yes! "${item.primary_title}"${year}.`)
+        }
+    }
 
-        if (state.currentItemType === ITEM_TYPE.MOVIE) {
-            // Show some actors in this movie
-            const cast = this.game.getMovieCast(state.currentItem.tconst)
-            const available = cast.filter((a) => !state.usedActors.includes(a.nconst))
+    announceIncorrect(result) {
+        if (!result.found) {
+            console.log(`I couldn't find anything matching that. Try again.`)
+        } else if (result.alreadyUsed) {
+            console.log(`We already said that one. Try another.`)
+        } else {
+            console.log(`That doesn't connect. Try again.`)
+        }
+    }
 
-            if (available.length === 0) {
-                console.log("No unused actors found! Try challenging.")
+    announceComputerMove(result) {
+        if (!result.success) {
+            // Computer gave up
+            console.log("I can't think of anything... you win this round!")
+            return
+        }
+
+        const item = result.matchedItem
+        if (result.nextItemType === ITEM_TYPE.ACTOR) {
+            // Computer named a movie
+            const year = item.start_year ? ` from ${item.start_year}` : ""
+            console.log(`How about "${item.primary_title}"${year}?`)
+            console.log("Name an actor from that movie.")
+        } else {
+            // Computer named an actor
+            console.log(`I'll say ${item.primary_name}.`)
+            console.log("Name a movie they were in.")
+        }
+    }
+
+    announceChallenge(result) {
+        if (result.roundWinner === PLAYER.HUMAN) {
+            console.log("You got me! I had nothing.")
+            console.log(`You win the round. Score: You ${result.scores[PLAYER.HUMAN]} - Computer ${result.scores[PLAYER.COMPUTER]}`)
+        } else {
+            const proof = result.proofItem
+            if (proof.primary_name) {
+                console.log(`Actually, ${proof.primary_name} was in that!`)
             } else {
-                console.log("Some actors in this movie:")
-                available.slice(0, 3).forEach((a) => {
-                    console.log(`  - ${a.primary_name}`)
-                })
+                const year = proof.start_year ? ` (${proof.start_year})` : ""
+                console.log(`Actually, they were in "${proof.primary_title}"${year}!`)
             }
-        } else {
-            // Show some movies with this actor
-            const movies = this.game.getActorMovies(state.currentItem.nconst)
-            const available = movies.filter((m) => !state.usedMovies.includes(m.tconst))
-
-            if (available.length === 0) {
-                console.log("No unused movies found! Try challenging.")
-            } else {
-                console.log("Some movies with this actor:")
-                available.slice(0, 3).forEach((m) => {
-                    console.log(`  - ${m.primary_title} (${m.start_year})`)
-                })
-            }
+            console.log(`I win the round. Score: You ${result.scores[PLAYER.HUMAN]} - Computer ${result.scores[PLAYER.COMPUTER]}`)
         }
-        console.log()
-    }
-
-    showUsed(state) {
-        console.log("\nUsed this round:")
-
-        if (state.usedActors.length === 0 && state.usedMovies.length === 0) {
-            console.log("  (nothing yet)")
-        } else {
-            if (state.usedMovies.length > 0) {
-                // Look up movie names
-                const movieNames = state.usedMovies.map((tconst) => {
-                    const stmt = this.db.prepare("SELECT primary_title, start_year FROM title_basics WHERE tconst = ?")
-                    const m = stmt.get(tconst)
-                    return m ? `${m.primary_title} (${m.start_year})` : tconst
-                })
-                console.log("  Movies:", movieNames.join(", "))
-            }
-
-            if (state.usedActors.length > 0) {
-                // Look up actor names
-                const actorNames = state.usedActors.map((nconst) => {
-                    const stmt = this.db.prepare("SELECT primary_name FROM name_basics WHERE nconst = ?")
-                    const a = stmt.get(nconst)
-                    return a ? a.primary_name : nconst
-                })
-                console.log("  Actors:", actorNames.join(", "))
-            }
-        }
-        console.log()
-    }
-
-    showHelp() {
-        console.log("\nCommands:")
-        console.log("  <name>           - Enter a movie or actor name")
-        console.log("  challenge (c)    - Challenge when you can't answer")
-        console.log("  hint (h)         - Show available answers")
-        console.log("  used (u)         - Show items used this round")
-        console.log("  score (s)        - Show current score")
-        console.log("  restart (r)      - Restart the game")
-        console.log("  quit (q)         - Exit the game")
-        console.log("  help (?)         - Show this help")
-        console.log()
     }
 
     prompt(message) {
