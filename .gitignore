@@ -1,0 +1,6 @@
+/.claude
+/package-lock.json
+/node_modules
+/data/imdb.db
+/data/*.tsv
+/data/*.tsv.gz

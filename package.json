@@ -1,0 +1,24 @@
+{
+  "name": "movieactor",
+  "version": "1.0.0",
+  "description": "IMDB database for searching movies and actors",
+  "type": "module",
+  "scripts": {
+    "gendb": "node scripts/rebuild_imdb.js",
+    "format": "prettier --write \"**/*.js\"",
+    "lint": "eslint \"**/*.js\""
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.6.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2"
+  },
+  "prettier": {
+    "printWidth": 130,
+    "tabWidth": 4,
+    "trailingComma": "none",
+    "semi": false
+  }
+}
