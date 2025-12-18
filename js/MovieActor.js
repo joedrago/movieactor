@@ -166,14 +166,13 @@ export default class MovieActor {
             ORDER BY COALESCE(r.num_votes, 0) DESC
         `)
 
-        // Check if actor is in movie
+        // Check if actor is in movie (omniscient - no ordering filter for validation)
         this.stmtValidateActorInMovie = this.db.prepare(`
             SELECT tp.ordering, tp.characters
             FROM title_principals tp
             WHERE tp.tconst = ?
               AND tp.nconst = ?
               AND tp.category IN ('actor', 'actress')
-              AND tp.ordering <= ?
         `)
 
         // Get random popular actor (for starting)
@@ -375,10 +374,10 @@ export default class MovieActor {
     }
 
     /**
-     * Validate that an actor is in a movie
+     * Validate that an actor is in a movie (omniscient - ignores difficulty)
      */
     _validateActorInMovie(actorNconst, movieTconst) {
-        const result = this.stmtValidateActorInMovie.get(movieTconst, actorNconst, this.config.maxOrdering)
+        const result = this.stmtValidateActorInMovie.get(movieTconst, actorNconst)
         return result !== undefined
     }
 
