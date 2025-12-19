@@ -11,6 +11,7 @@ const inputForm = document.getElementById("input-form")
 const input = document.getElementById("input")
 const submitBtn = document.getElementById("submit")
 const voiceCheckbox = document.getElementById("tts-checkbox")
+const restartBtn = document.getElementById("restart-btn")
 
 // State
 let gameId = null
@@ -87,7 +88,7 @@ async function enableVoice() {
         const messages = chat.querySelectorAll(".message.system")
         if (messages.length > 0) {
             const lastMessage = messages[messages.length - 1]
-            speak(lastMessage.textContent)
+            speak(lastMessage.innerText)
         }
 
         return true
@@ -116,6 +117,12 @@ voiceCheckbox.addEventListener("change", async () => {
     } else {
         disableVoice()
     }
+})
+
+restartBtn.addEventListener("click", () => {
+    localStorage.removeItem(STORAGE_KEY)
+    clearChat()
+    socket.emit("new-game")
 })
 
 // Initialize
@@ -193,7 +200,12 @@ function clearChat() {
 function addMessage(text, type) {
     const msg = document.createElement("div")
     msg.className = `message ${type}`
-    msg.textContent = text
+    if (type === "system") {
+        // System messages may contain HTML (bold movie/actor names)
+        msg.innerHTML = text.replace(/\n/g, "<br>")
+    } else {
+        msg.textContent = text
+    }
     chat.appendChild(msg)
 }
 
@@ -252,9 +264,11 @@ function scrollToBottom() {
 }
 
 function prepareTextForSpeech(text) {
-    // Replace multiple newlines with a longer pause (period + space)
-    // Replace single newlines with a short pause (comma + space)
-    return text.replace(/\n\n+/g, ". ").replace(/\n/g, ", ").replace(/\s+/g, " ").trim()
+    // Strip HTML tags
+    const stripped = text.replace(/<[^>]*>/g, "")
+    // Replace multiple newlines with a longer pause (ellipsis)
+    // Replace single newlines with a short pause (comma)
+    return stripped.replace(/\n\n+/g, "... ").replace(/\n/g, ", ").replace(/\s+/g, " ").trim()
 }
 
 function speak(text, retries = 3) {

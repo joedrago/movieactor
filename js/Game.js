@@ -209,10 +209,10 @@ export default class Game {
         } else {
             const proof = result.proofItem
             if (proof.primary_name) {
-                lines.push(`Actually, ${proof.primary_name} was in that!`)
+                lines.push(`Actually, <b>${proof.primary_name}</b> was in that!`)
             } else {
                 const year = proof.start_year ? ` (${proof.start_year})` : ""
-                lines.push(`Actually, they were in "${proof.primary_title}"${year}!`)
+                lines.push(`Actually, they were in "<b>${proof.primary_title}</b>"${year}!`)
             }
         }
 
@@ -276,11 +276,11 @@ export default class Game {
         lines.push("")
 
         if (result.startingItemType === ITEM_TYPE.ACTOR) {
-            lines.push(`Let's start with ${result.startingItem.primary_name}.`)
+            lines.push(`Let's start with <b>${result.startingItem.primary_name}</b>.`)
             //lines.push("Name a movie they were in.")
         } else {
             const year = result.startingItem.start_year ? ` from ${result.startingItem.start_year}` : ""
-            lines.push(`Let's start with "${result.startingItem.primary_title}"${year}.`)
+            lines.push(`Let's start with "<b>${result.startingItem.primary_title}</b>"${year}.`)
             //lines.push("Name an actor from that movie.")
         }
 
@@ -290,10 +290,10 @@ export default class Game {
     _formatCorrect(result) {
         const item = result.matchedItem
         if (result.nextItemType === ITEM_TYPE.MOVIE) {
-            return `Yes! ${item.primary_name}.`
+            return `Yes! <b>${item.primary_name}</b>.`
         } else {
             const year = item.start_year ? ` (${item.start_year})` : ""
-            return `Yes! "${item.primary_title}"${year}.`
+            return `Yes! "<b>${item.primary_title}</b>"${year}.`
         }
     }
 
@@ -315,9 +315,9 @@ export default class Game {
         const item = result.matchedItem
         if (result.nextItemType === ITEM_TYPE.ACTOR) {
             const year = item.start_year ? ` from ${item.start_year}` : ""
-            return `How about "${item.primary_title}"${year}?`
+            return `How about "<b>${item.primary_title}</b>"${year}?`
         } else {
-            return `I'll say ${item.primary_name}.`
+            return `I'll say <b>${item.primary_name}</b>.`
         }
     }
 
