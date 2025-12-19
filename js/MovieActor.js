@@ -30,22 +30,47 @@ export const GAME_STATE = {
     GAME_OVER: "game_over"
 }
 
-// Difficulty configuration
+/**
+ * Difficulty Configuration
+ *
+ * Controls what the computer "knows" about movies and actors.
+ * Note: Human answers are always validated against the full database (omniscient validation).
+ * These settings only limit what the computer can pick and what it considers when challenged.
+ *
+ * Parameters:
+ *   maxOrdering     - Maximum cast billing position (1 = lead, higher = smaller roles)
+ *   minYear         - Oldest movie year the computer knows
+ *   minVotes        - Minimum IMDB votes for movies the computer knows (proxy for fame)
+ *   minVotesForStart - Minimum votes for movies/actors used to start a round
+ *   minActorMovies  - Minimum filmography size for starting actors
+ */
 const DIFFICULTY_CONFIG = {
     [DIFFICULTY.EASY]: {
-        maxOrdering: 5,
-        minVotesForStart: 100000,
-        minActorMovieCount: 20
+        // Computer only knows modern blockbusters and leading stars
+        // Post-1980 movies with 100k+ votes, only top 3 billed actors
+        maxOrdering: 3,
+        minYear: 1980,
+        minVotes: 100000,
+        minVotesForStart: 200000,
+        minActorMovies: 15
     },
     [DIFFICULTY.MEDIUM]: {
+        // Computer knows popular movies and main cast
+        // Post-1960 movies with 10k+ votes, top 10 billed actors
         maxOrdering: 10,
+        minYear: 1960,
+        minVotes: 10000,
         minVotesForStart: 50000,
-        minActorMovieCount: 10
+        minActorMovies: 8
     },
     [DIFFICULTY.HARD]: {
+        // Computer knows nearly everything
+        // All years, any movie with 1k+ votes, entire cast
         maxOrdering: 999,
-        minVotesForStart: 10000,
-        minActorMovieCount: 5
+        minYear: 1900,
+        minVotes: 1000,
+        minVotesForStart: 5000,
+        minActorMovies: 3
     }
 }
 
@@ -176,6 +201,7 @@ export default class MovieActor {
         `)
 
         // Get random popular actor (for starting)
+        // Params: minVotesForStart, minYear, maxOrdering, minActorMovies
         this.stmtRandomActor = this.db.prepare(`
             SELECT n.nconst, n.primary_name, n.birth_year,
                    COUNT(DISTINCT tp.tconst) as movie_count
@@ -185,7 +211,8 @@ export default class MovieActor {
             JOIN title_ratings r ON t.tconst = r.tconst
             WHERE tp.category IN ('actor', 'actress')
               AND t.title_type = 'movie'
-              AND r.num_votes > ?
+              AND r.num_votes >= ?
+              AND t.start_year >= ?
               AND tp.ordering <= ?
             GROUP BY n.nconst
             HAVING movie_count >= ?
@@ -194,20 +221,23 @@ export default class MovieActor {
         `)
 
         // Get random popular movie (for starting)
+        // Params: minVotesForStart, minYear
         this.stmtRandomMovie = this.db.prepare(`
             SELECT t.tconst, t.primary_title, t.start_year,
                    r.average_rating, r.num_votes
             FROM title_basics t
             JOIN title_ratings r ON t.tconst = r.tconst
             WHERE t.title_type = 'movie'
-              AND r.num_votes > ?
-              AND t.start_year > 1950
+              AND r.num_votes >= ?
+              AND t.start_year >= ?
             ORDER BY RANDOM()
             LIMIT 1
         `)
 
         // Computer pick: find valid actor for a movie (not already used)
         // We'll build this dynamically since we need to exclude used IDs
+        // Base params: tconst, maxOrdering
+        // Additional filters for year/votes applied via the movie already being selected
         this.stmtComputerPickActorBase = `
             SELECT n.nconst, n.primary_name, n.birth_year, tp.ordering,
                    (SELECT COUNT(*) FROM title_principals WHERE nconst = n.nconst
@@ -220,6 +250,7 @@ export default class MovieActor {
         `
 
         // Computer pick: find valid movie for an actor (not already used)
+        // Base params: nconst, maxOrdering, minYear, minVotes
         this.stmtComputerPickMovieBase = `
             SELECT t.tconst, t.primary_title, t.start_year, tp.ordering,
                    (SELECT COUNT(*) FROM title_principals WHERE tconst = t.tconst
@@ -232,6 +263,8 @@ export default class MovieActor {
               AND tp.category IN ('actor', 'actress')
               AND t.title_type = 'movie'
               AND tp.ordering <= ?
+              AND t.start_year >= ?
+              AND COALESCE(r.num_votes, 0) >= ?
         `
     }
 
@@ -409,8 +442,9 @@ export default class MovieActor {
             // Pick a random popular actor
             const actor = this.stmtRandomActor.get(
                 this.config.minVotesForStart,
+                this.config.minYear,
                 this.config.maxOrdering,
-                this.config.minActorMovieCount
+                this.config.minActorMovies
             )
 
             if (!actor) {
@@ -437,7 +471,7 @@ export default class MovieActor {
             }
         } else {
             // Pick a random popular movie
-            const movie = this.stmtRandomMovie.get(this.config.minVotesForStart)
+            const movie = this.stmtRandomMovie.get(this.config.minVotesForStart, this.config.minYear)
 
             if (!movie) {
                 return {
@@ -701,8 +735,9 @@ export default class MovieActor {
      */
     _computerPicksMovie() {
         // Build query excluding used movies
+        // Base params: nconst, maxOrdering, minYear, minVotes
         let query = this.stmtComputerPickMovieBase
-        const params = [this.currentItem.nconst, this.config.maxOrdering]
+        const params = [this.currentItem.nconst, this.config.maxOrdering, this.config.minYear, this.config.minVotes]
 
         if (this.usedMovies.size > 0) {
             const placeholders = [...this.usedMovies].map(() => "?").join(",")
@@ -819,8 +854,9 @@ export default class MovieActor {
      * Computer tries to find a proof movie (for challenge response)
      */
     _computerFindProofMovie() {
+        // Base params: nconst, maxOrdering, minYear, minVotes
         let query = this.stmtComputerPickMovieBase
-        const params = [this.currentItem.nconst, this.config.maxOrdering]
+        const params = [this.currentItem.nconst, this.config.maxOrdering, this.config.minYear, this.config.minVotes]
 
         if (this.usedMovies.size > 0) {
             const placeholders = [...this.usedMovies].map(() => "?").join(",")

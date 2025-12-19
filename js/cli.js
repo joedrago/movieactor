@@ -127,16 +127,16 @@ class CLI {
         console.log("=".repeat(50))
         console.log()
         console.log("Take turns naming movies and actors!")
-        console.log("If you get stuck, say \"challenge\"")
+        console.log('If you get stuck, say "challenge"')
         console.log("First to win 5 rounds wins.")
         console.log()
     }
 
     async selectDifficulty() {
         console.log("How difficult would you like the game?")
-        console.log("  Easy   - Computer only knows the stars")
-        console.log("  Medium - Computer knows supporting cast too")
-        console.log("  Hard   - Computer knows everyone")
+        console.log("  Easy   - Modern blockbusters, leading stars only")
+        console.log("  Medium - Classic films, main cast")
+        console.log("  Hard   - Deep cuts, entire cast")
         console.log()
 
         while (true) {
@@ -260,11 +260,11 @@ class CLI {
 
     announceCorrect(result) {
         const item = result.matchedItem
-        if (result.nextItemType === ITEM_TYPE.ACTOR) {
-            // They named an actor
+        if (result.nextItemType === ITEM_TYPE.MOVIE) {
+            // They named an actor, next is movie
             console.log(`Yes! ${item.primary_name}.`)
         } else {
-            // They named a movie
+            // They named a movie, next is actor
             const year = item.start_year ? ` (${item.start_year})` : ""
             console.log(`Yes! "${item.primary_title}"${year}.`)
         }
@@ -303,7 +303,9 @@ class CLI {
     announceChallenge(result) {
         if (result.roundWinner === PLAYER.HUMAN) {
             console.log("You got me! I had nothing.")
-            console.log(`You win the round. Score: You ${result.scores[PLAYER.HUMAN]} - Computer ${result.scores[PLAYER.COMPUTER]}`)
+            console.log(
+                `You win the round. Score: You ${result.scores[PLAYER.HUMAN]} - Computer ${result.scores[PLAYER.COMPUTER]}`
+            )
         } else {
             const proof = result.proofItem
             if (proof.primary_name) {
