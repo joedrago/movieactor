@@ -112,7 +112,7 @@ export default class MovieActor {
     _prepareStatements() {
         // Fuzzy search for actors by name
         this.stmtSearchActors = this.db.prepare(`
-            SELECT n.nconst, n.primary_name, n.birth_year, n.death_year,
+            SELECT n.nconst, n.primary_name, n.birth_year,
                    COUNT(DISTINCT tp.tconst) as movie_count
             FROM name_basics_fts fts
             JOIN name_basics n ON fts.nconst = n.nconst
@@ -128,8 +128,7 @@ export default class MovieActor {
 
         // Fuzzy search for movies by title
         this.stmtSearchMovies = this.db.prepare(`
-            SELECT t.tconst, t.primary_title, t.start_year,
-                   r.average_rating, r.num_votes
+            SELECT t.tconst, t.primary_title, t.start_year, r.num_votes
             FROM title_basics_fts fts
             JOIN title_basics t ON fts.tconst = t.tconst
             LEFT JOIN title_ratings r ON t.tconst = r.tconst
@@ -141,7 +140,7 @@ export default class MovieActor {
 
         // LIKE-based fallback search for actors
         this.stmtSearchActorsLike = this.db.prepare(`
-            SELECT n.nconst, n.primary_name, n.birth_year, n.death_year,
+            SELECT n.nconst, n.primary_name, n.birth_year,
                    COUNT(DISTINCT tp.tconst) as movie_count
             FROM name_basics n
             JOIN title_principals tp ON n.nconst = tp.nconst
@@ -156,8 +155,7 @@ export default class MovieActor {
 
         // LIKE-based fallback search for movies
         this.stmtSearchMoviesLike = this.db.prepare(`
-            SELECT t.tconst, t.primary_title, t.start_year,
-                   r.average_rating, r.num_votes
+            SELECT t.tconst, t.primary_title, t.start_year, r.num_votes
             FROM title_basics t
             LEFT JOIN title_ratings r ON t.tconst = r.tconst
             WHERE LOWER(t.primary_title) LIKE ?
@@ -168,7 +166,7 @@ export default class MovieActor {
 
         // Get actors in a movie (with ordering filter)
         this.stmtGetMovieCast = this.db.prepare(`
-            SELECT n.nconst, n.primary_name, n.birth_year, tp.ordering, tp.characters
+            SELECT n.nconst, n.primary_name, n.birth_year, tp.ordering
             FROM title_principals tp
             JOIN name_basics n ON tp.nconst = n.nconst
             WHERE tp.tconst = ?
@@ -179,8 +177,7 @@ export default class MovieActor {
 
         // Get movies for an actor (with ordering filter)
         this.stmtGetActorMovies = this.db.prepare(`
-            SELECT t.tconst, t.primary_title, t.start_year, tp.ordering,
-                   r.average_rating, r.num_votes
+            SELECT t.tconst, t.primary_title, t.start_year, tp.ordering, r.num_votes
             FROM title_principals tp
             JOIN title_basics t ON tp.tconst = t.tconst
             LEFT JOIN title_ratings r ON t.tconst = r.tconst
@@ -193,7 +190,7 @@ export default class MovieActor {
 
         // Check if actor is in movie (omniscient - no ordering filter for validation)
         this.stmtValidateActorInMovie = this.db.prepare(`
-            SELECT tp.ordering, tp.characters
+            SELECT tp.ordering
             FROM title_principals tp
             WHERE tp.tconst = ?
               AND tp.nconst = ?
@@ -223,8 +220,7 @@ export default class MovieActor {
         // Get random popular movie (for starting)
         // Params: minVotesForStart, minYear
         this.stmtRandomMovie = this.db.prepare(`
-            SELECT t.tconst, t.primary_title, t.start_year,
-                   r.average_rating, r.num_votes
+            SELECT t.tconst, t.primary_title, t.start_year, r.num_votes
             FROM title_basics t
             JOIN title_ratings r ON t.tconst = r.tconst
             WHERE t.title_type = 'movie'
@@ -933,7 +929,7 @@ export default class MovieActor {
         this.lastMoveMessage = message
 
         return {
-            success: true,
+            success: false, // Round ended, not a successful move
             roundWinner: winner,
             proofItem,
             scores: { ...this.scores },

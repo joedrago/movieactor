@@ -28,15 +28,8 @@ const DATA_DIR = join(PROJECT_ROOT, "data")
 const DB_PATH = join(DATA_DIR, "imdb.db")
 
 const IMDB_BASE_URL = "https://datasets.imdbws.com"
-const DATASET_FILES = [
-    "name.basics.tsv.gz",
-    "title.basics.tsv.gz",
-    "title.akas.tsv.gz",
-    "title.crew.tsv.gz",
-    "title.episode.tsv.gz",
-    "title.principals.tsv.gz",
-    "title.ratings.tsv.gz"
-]
+// Only download files needed for MovieActor game
+const DATASET_FILES = ["name.basics.tsv.gz", "title.basics.tsv.gz", "title.principals.tsv.gz", "title.ratings.tsv.gz"]
 
 // Print help and exit
 function printHelp() {
@@ -146,6 +139,7 @@ async function* readTsv(filePath) {
  * Create the database schema
  * Note: Foreign key constraints are intentionally omitted because IMDB data
  * contains references to entries that may not exist or were filtered out.
+ * Only includes columns needed for MovieActor game.
  */
 function createSchema(db) {
     console.log("Creating database schema...")
@@ -156,92 +150,48 @@ function createSchema(db) {
     DROP TABLE IF EXISTS title_basics_fts;
     DROP TABLE IF EXISTS name_basics;
     DROP TABLE IF EXISTS title_basics;
-    DROP TABLE IF EXISTS title_akas;
-    DROP TABLE IF EXISTS title_crew;
-    DROP TABLE IF EXISTS title_episode;
     DROP TABLE IF EXISTS title_principals;
     DROP TABLE IF EXISTS title_ratings;
   `)
 
     // name_basics - People (actors, directors, etc.)
+    // Only columns needed: nconst, primary_name, birth_year
     db.exec(`
     CREATE TABLE name_basics (
       nconst TEXT PRIMARY KEY,
       primary_name TEXT NOT NULL,
-      birth_year INTEGER,
-      death_year INTEGER,
-      primary_profession TEXT,
-      known_for_titles TEXT
+      birth_year INTEGER
     );
   `)
 
     // title_basics - Movies, TV shows, etc.
+    // Only columns needed: tconst, title_type, primary_title, start_year
     db.exec(`
     CREATE TABLE title_basics (
       tconst TEXT PRIMARY KEY,
       title_type TEXT,
       primary_title TEXT NOT NULL,
-      original_title TEXT,
-      is_adult INTEGER,
-      start_year INTEGER,
-      end_year INTEGER,
-      runtime_minutes INTEGER,
-      genres TEXT
-    );
-  `)
-
-    // title_akas - Alternative/localized titles
-    db.exec(`
-    CREATE TABLE title_akas (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title_id TEXT NOT NULL,
-      ordering INTEGER,
-      title TEXT NOT NULL,
-      region TEXT,
-      language TEXT,
-      types TEXT,
-      attributes TEXT,
-      is_original_title INTEGER
-    );
-  `)
-
-    // title_crew - Directors and writers
-    db.exec(`
-    CREATE TABLE title_crew (
-      tconst TEXT PRIMARY KEY,
-      directors TEXT,
-      writers TEXT
-    );
-  `)
-
-    // title_episode - TV episode info
-    db.exec(`
-    CREATE TABLE title_episode (
-      tconst TEXT PRIMARY KEY,
-      parent_tconst TEXT,
-      season_number INTEGER,
-      episode_number INTEGER
+      start_year INTEGER
     );
   `)
 
     // title_principals - Principal cast/crew
+    // Only columns needed: tconst, nconst, ordering, category
     db.exec(`
     CREATE TABLE title_principals (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tconst TEXT NOT NULL,
       ordering INTEGER,
       nconst TEXT NOT NULL,
-      category TEXT,
-      job TEXT,
-      characters TEXT
+      category TEXT
     );
   `)
 
     // title_ratings - User ratings
+    // Only columns needed: tconst, num_votes
     db.exec(`
     CREATE TABLE title_ratings (
       tconst TEXT PRIMARY KEY,
-      average_rating REAL,
       num_votes INTEGER
     );
   `)
@@ -259,8 +209,6 @@ function createIndexes(db) {
     CREATE INDEX IF NOT EXISTS idx_title_basics_primary_title ON title_basics(primary_title COLLATE NOCASE);
     CREATE INDEX IF NOT EXISTS idx_title_basics_title_type ON title_basics(title_type);
     CREATE INDEX IF NOT EXISTS idx_title_basics_start_year ON title_basics(start_year);
-    CREATE INDEX IF NOT EXISTS idx_title_akas_title ON title_akas(title COLLATE NOCASE);
-    CREATE INDEX IF NOT EXISTS idx_title_akas_title_id ON title_akas(title_id);
   `)
 
     // Indexes for joining tables (critical for actor<->movie lookups)
@@ -268,7 +216,6 @@ function createIndexes(db) {
     CREATE INDEX IF NOT EXISTS idx_title_principals_tconst ON title_principals(tconst);
     CREATE INDEX IF NOT EXISTS idx_title_principals_nconst ON title_principals(nconst);
     CREATE INDEX IF NOT EXISTS idx_title_principals_category ON title_principals(category);
-    CREATE INDEX IF NOT EXISTS idx_title_episode_parent ON title_episode(parent_tconst);
   `)
 
     // Index for ratings lookup (to sort by popularity)
@@ -448,34 +395,31 @@ async function main() {
     // Import data
     console.log("\nStep 4: Importing data...\n")
 
-    // Import name_basics (people)
+    // Import name_basics (people) - only columns needed for MovieActor
     await importTsv(
         db,
         join(DATA_DIR, "name.basics.tsv"),
         "name_basics",
-        `INSERT INTO name_basics (nconst, primary_name, birth_year, death_year, primary_profession, known_for_titles)
-     VALUES (@nconst, @primary_name, @birth_year, @death_year, @primary_profession, @known_for_titles)`,
+        `INSERT INTO name_basics (nconst, primary_name, birth_year)
+     VALUES (@nconst, @primary_name, @birth_year)`,
         (row) => {
             // Skip rows with missing required fields
             if (!row.nconst || !row.primaryName) return null
             return {
                 nconst: row.nconst,
                 primary_name: row.primaryName,
-                birth_year: row.birthYear ? parseInt(row.birthYear, 10) : null,
-                death_year: row.deathYear ? parseInt(row.deathYear, 10) : null,
-                primary_profession: row.primaryProfession,
-                known_for_titles: row.knownForTitles
+                birth_year: row.birthYear ? parseInt(row.birthYear, 10) : null
             }
         }
     )
 
-    // Import title_basics (titles)
+    // Import title_basics (titles) - only columns needed for MovieActor
     await importTsv(
         db,
         join(DATA_DIR, "title.basics.tsv"),
         "title_basics",
-        `INSERT INTO title_basics (tconst, title_type, primary_title, original_title, is_adult, start_year, end_year, runtime_minutes, genres)
-     VALUES (@tconst, @title_type, @primary_title, @original_title, @is_adult, @start_year, @end_year, @runtime_minutes, @genres)`,
+        `INSERT INTO title_basics (tconst, title_type, primary_title, start_year)
+     VALUES (@tconst, @title_type, @primary_title, @start_year)`,
         (row) => {
             // Skip rows with missing required fields
             if (!row.tconst || !row.primaryTitle) return null
@@ -483,75 +427,18 @@ async function main() {
                 tconst: row.tconst,
                 title_type: row.titleType,
                 primary_title: row.primaryTitle,
-                original_title: row.originalTitle,
-                is_adult: row.isAdult ? parseInt(row.isAdult, 10) : 0,
-                start_year: row.startYear ? parseInt(row.startYear, 10) : null,
-                end_year: row.endYear ? parseInt(row.endYear, 10) : null,
-                runtime_minutes: row.runtimeMinutes ? parseInt(row.runtimeMinutes, 10) : null,
-                genres: row.genres
+                start_year: row.startYear ? parseInt(row.startYear, 10) : null
             }
         }
     )
 
-    // Import title_akas (alternative titles)
-    await importTsv(
-        db,
-        join(DATA_DIR, "title.akas.tsv"),
-        "title_akas",
-        `INSERT INTO title_akas (title_id, ordering, title, region, language, types, attributes, is_original_title)
-     VALUES (@title_id, @ordering, @title, @region, @language, @types, @attributes, @is_original_title)`,
-        (row) => {
-            // Skip rows with missing required fields
-            if (!row.titleId || !row.title) return null
-            return {
-                title_id: row.titleId,
-                ordering: row.ordering ? parseInt(row.ordering, 10) : null,
-                title: row.title,
-                region: row.region,
-                language: row.language,
-                types: row.types,
-                attributes: row.attributes,
-                is_original_title: row.isOriginalTitle ? parseInt(row.isOriginalTitle, 10) : 0
-            }
-        }
-    )
-
-    // Import title_crew
-    await importTsv(
-        db,
-        join(DATA_DIR, "title.crew.tsv"),
-        "title_crew",
-        `INSERT INTO title_crew (tconst, directors, writers)
-     VALUES (@tconst, @directors, @writers)`,
-        (row) => ({
-            tconst: row.tconst,
-            directors: row.directors,
-            writers: row.writers
-        })
-    )
-
-    // Import title_episode
-    await importTsv(
-        db,
-        join(DATA_DIR, "title.episode.tsv"),
-        "title_episode",
-        `INSERT INTO title_episode (tconst, parent_tconst, season_number, episode_number)
-     VALUES (@tconst, @parent_tconst, @season_number, @episode_number)`,
-        (row) => ({
-            tconst: row.tconst,
-            parent_tconst: row.parentTconst,
-            season_number: row.seasonNumber ? parseInt(row.seasonNumber, 10) : null,
-            episode_number: row.episodeNumber ? parseInt(row.episodeNumber, 10) : null
-        })
-    )
-
-    // Import title_principals (cast/crew)
+    // Import title_principals (cast/crew) - only columns needed for MovieActor
     await importTsv(
         db,
         join(DATA_DIR, "title.principals.tsv"),
         "title_principals",
-        `INSERT INTO title_principals (tconst, ordering, nconst, category, job, characters)
-     VALUES (@tconst, @ordering, @nconst, @category, @job, @characters)`,
+        `INSERT INTO title_principals (tconst, ordering, nconst, category)
+     VALUES (@tconst, @ordering, @nconst, @category)`,
         (row) => {
             // Skip rows with missing required fields
             if (!row.tconst || !row.nconst) return null
@@ -559,23 +446,20 @@ async function main() {
                 tconst: row.tconst,
                 ordering: row.ordering ? parseInt(row.ordering, 10) : null,
                 nconst: row.nconst,
-                category: row.category,
-                job: row.job,
-                characters: row.characters
+                category: row.category
             }
         }
     )
 
-    // Import title_ratings
+    // Import title_ratings - only num_votes needed for MovieActor
     await importTsv(
         db,
         join(DATA_DIR, "title.ratings.tsv"),
         "title_ratings",
-        `INSERT INTO title_ratings (tconst, average_rating, num_votes)
-     VALUES (@tconst, @average_rating, @num_votes)`,
+        `INSERT INTO title_ratings (tconst, num_votes)
+     VALUES (@tconst, @num_votes)`,
         (row) => ({
             tconst: row.tconst,
-            average_rating: row.averageRating ? parseFloat(row.averageRating) : null,
             num_votes: row.numVotes ? parseInt(row.numVotes, 10) : null
         })
     )

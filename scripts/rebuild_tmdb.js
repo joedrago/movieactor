@@ -249,8 +249,8 @@ async function enrichImdbWithTmdb(db, tmdbFile) {
     `)
 
     const insertPrincipal = db.prepare(`
-        INSERT INTO title_principals (tconst, ordering, nconst, category, job, characters)
-        VALUES (?, ?, ?, 'actor', NULL, NULL)
+        INSERT INTO title_principals (tconst, ordering, nconst, category)
+        VALUES (?, ?, ?, 'actor')
     `)
 
     // Stats

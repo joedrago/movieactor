@@ -51,6 +51,7 @@ if (SpeechRecognition) {
         // "no-speech" and "aborted" are expected when user is quiet
         if (event.error !== "no-speech" && event.error !== "aborted") {
             console.log("Speech recognition error:", event.error)
+            hideListeningIndicator()
         }
     }
 
@@ -166,15 +167,24 @@ function init() {
     })
 
     socket.on("output", (data) => {
-        addMessage(data.output, "system")
-        updateStatus(data.state)
-        setInputEnabled(true)
-        scrollToBottom()
-        speak(data.output)
+        try {
+            hideListeningIndicator()
+            addMessage(data.output, "system")
+            updateStatus(data.state)
+            scrollToBottom()
+            speak(data.output)
+        } catch (err) {
+            console.error("Error handling output:", err)
+            addMessage("Error displaying response", "system")
+        } finally {
+            setInputEnabled(true)
+        }
     })
 
     socket.on("error", (data) => {
+        hideListeningIndicator()
         addMessage(`Error: ${data.message}`, "system")
+        setInputEnabled(true)
     })
 
     // Handle form submission
