@@ -72,29 +72,48 @@ if (SpeechRecognition) {
 }
 
 async function enableVoice() {
+    console.log("[Voice] enableVoice() called")
+    console.log("[Voice] recognition available:", !!recognition)
+    console.log("[Voice] speechSynthesis available:", !!window.speechSynthesis)
+
     if (!recognition) {
+        console.log("[Voice] Aborting: no recognition support")
         alert("Speech recognition is not supported in this browser.")
         voiceCheckbox.checked = false
         return false
     }
 
+    // iOS Safari requires speechSynthesis to be triggered directly from user gesture.
+    // The await below breaks the gesture chain, so we "unlock" TTS first with an empty utterance.
+    if (window.speechSynthesis) {
+        console.log("[Voice] Unlocking speechSynthesis with empty utterance (iOS workaround)")
+        const unlock = new SpeechSynthesisUtterance("")
+        window.speechSynthesis.speak(unlock)
+    }
+
     try {
         // Request microphone access
+        console.log("[Voice] Requesting microphone access...")
         await navigator.mediaDevices.getUserMedia({ audio: true })
+        console.log("[Voice] Microphone access granted")
+
         voiceEnabled = true
         micReady = true
         voiceCheckbox.checked = true
+        console.log("[Voice] voiceEnabled:", voiceEnabled, "micReady:", micReady)
 
         // Speak the most recent system message
         const messages = chat.querySelectorAll(".message.system")
+        console.log("[Voice] Found", messages.length, "system messages")
         if (messages.length > 0) {
             const lastMessage = messages[messages.length - 1]
+            console.log("[Voice] Speaking last message:", lastMessage.innerText.substring(0, 50) + "...")
             speak(lastMessage.innerText)
         }
 
         return true
     } catch (err) {
-        console.error("Microphone access denied:", err)
+        console.error("[Voice] Microphone access denied:", err)
         alert("Microphone access is required for voice mode.")
         voiceCheckbox.checked = false
         return false
@@ -282,45 +301,105 @@ function prepareTextForSpeech(text) {
 }
 
 function speak(text, retries = 3) {
-    if (!voiceEnabled || !window.speechSynthesis) return
+    console.log("[TTS] speak() called")
+    console.log("[TTS] voiceEnabled:", voiceEnabled)
+    console.log("[TTS] speechSynthesis available:", !!window.speechSynthesis)
+    console.log("[TTS] retries remaining:", retries)
+
+    if (!voiceEnabled) {
+        console.log("[TTS] Aborting: voice not enabled")
+        return
+    }
+    if (!window.speechSynthesis) {
+        console.log("[TTS] Aborting: speechSynthesis not available")
+        return
+    }
+
+    // Check voices
+    const voices = window.speechSynthesis.getVoices()
+    console.log("[TTS] Available voices:", voices.length)
+    voices.forEach((v, i) => {
+        if (i < 5) console.log(`[TTS]   Voice ${i}: ${v.name} (${v.lang}) default=${v.default}`)
+    })
+    if (voices.length > 5) console.log(`[TTS]   ... and ${voices.length - 5} more`)
+
+    // Check current state
+    console.log("[TTS] Current state - speaking:", window.speechSynthesis.speaking, "pending:", window.speechSynthesis.pending, "paused:", window.speechSynthesis.paused)
 
     // Cancel any ongoing speech
+    console.log("[TTS] Calling cancel()")
     window.speechSynthesis.cancel()
 
     const spokenText = prepareTextForSpeech(text)
+    console.log("[TTS] Text to speak:", spokenText.substring(0, 100) + (spokenText.length > 100 ? "..." : ""))
+
     const utterance = new SpeechSynthesisUtterance(spokenText)
     utterance.rate = 1.0
     utterance.pitch = 1.0
+    console.log("[TTS] Created utterance, rate:", utterance.rate, "pitch:", utterance.pitch)
+
+    // Detect iOS
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    console.log("[TTS] iOS detected:", isIOS)
+
+    utterance.onstart = () => {
+        console.log("[TTS] EVENT: onstart - speech began")
+    }
+
+    utterance.onpause = () => {
+        console.log("[TTS] EVENT: onpause - speech paused")
+    }
+
+    utterance.onresume = () => {
+        console.log("[TTS] EVENT: onresume - speech resumed")
+    }
+
+    utterance.onboundary = (event) => {
+        console.log("[TTS] EVENT: onboundary - type:", event.name, "charIndex:", event.charIndex)
+    }
 
     // Handle errors with retry
     utterance.onerror = (event) => {
-        console.log("TTS error:", event.error)
+        console.log("[TTS] EVENT: onerror")
+        console.log("[TTS] Error type:", event.error)
+        console.log("[TTS] Error event:", event)
         if (retries > 0) {
-            console.log(`Retrying TTS... (${retries} attempts left)`)
+            console.log(`[TTS] Retrying... (${retries} attempts left)`)
             setTimeout(() => speak(text, retries - 1), 200)
         } else {
-            // All retries exhausted, still start listening
+            console.log("[TTS] All retries exhausted, starting listening")
             startListening()
         }
     }
 
     // When speech ends, start listening
     utterance.onend = () => {
+        console.log("[TTS] EVENT: onend - speech finished")
         startListening()
     }
 
+    console.log("[TTS] Calling speechSynthesis.speak()")
     window.speechSynthesis.speak(utterance)
+    console.log("[TTS] speak() called, state - speaking:", window.speechSynthesis.speaking, "pending:", window.speechSynthesis.pending)
 
     // Workaround for Chrome bug where long text can cause TTS to stop
     // Keep speechSynthesis alive by resuming periodically
-    const keepAlive = setInterval(() => {
-        if (window.speechSynthesis.speaking) {
-            window.speechSynthesis.pause()
-            window.speechSynthesis.resume()
-        } else {
-            clearInterval(keepAlive)
-        }
-    }, 10000)
+    // NOTE: This can break iOS Safari, so skip it on iOS
+    if (!isIOS) {
+        console.log("[TTS] Setting up Chrome keepAlive workaround (non-iOS)")
+        const keepAlive = setInterval(() => {
+            if (window.speechSynthesis.speaking) {
+                console.log("[TTS] keepAlive: pause/resume")
+                window.speechSynthesis.pause()
+                window.speechSynthesis.resume()
+            } else {
+                console.log("[TTS] keepAlive: cleared (not speaking)")
+                clearInterval(keepAlive)
+            }
+        }, 10000)
+    } else {
+        console.log("[TTS] Skipping Chrome keepAlive workaround (iOS detected)")
+    }
 }
 
 function startListening() {
@@ -330,6 +409,28 @@ function startListening() {
         } catch (_e) {
             // Recognition may already be running
         }
+    }
+}
+
+// Log TTS support on startup
+console.log("[TTS Init] speechSynthesis available:", !!window.speechSynthesis)
+console.log("[TTS Init] SpeechRecognition available:", !!SpeechRecognition)
+console.log("[TTS Init] User agent:", navigator.userAgent)
+console.log("[TTS Init] iOS detected:", /iPad|iPhone|iPod/.test(navigator.userAgent))
+
+if (window.speechSynthesis) {
+    // Log initial voices (may be empty on iOS until onvoiceschanged fires)
+    const initialVoices = window.speechSynthesis.getVoices()
+    console.log("[TTS Init] Initial voices:", initialVoices.length)
+
+    // Listen for voices to load (important for iOS)
+    window.speechSynthesis.onvoiceschanged = () => {
+        const voices = window.speechSynthesis.getVoices()
+        console.log("[TTS Init] onvoiceschanged fired, voices:", voices.length)
+        voices.forEach((v, i) => {
+            if (i < 5) console.log(`[TTS Init]   Voice ${i}: ${v.name} (${v.lang}) default=${v.default}`)
+        })
+        if (voices.length > 5) console.log(`[TTS Init]   ... and ${voices.length - 5} more`)
     }
 }
 
