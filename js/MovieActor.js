@@ -281,6 +281,35 @@ export default class MovieActor {
     }
 
     /**
+     * Score how well a title matches a query (higher = better match)
+     * Used to prefer exact matches over partial matches for sequels
+     */
+    _scoreTitleMatch(query, title) {
+        const q = query.toLowerCase().trim()
+        const t = title.toLowerCase().trim()
+
+        // Exact match is best
+        if (q === t) return 100
+
+        // If query has numbers, title must have the same numbers
+        const qNums = q.match(/\d+/g) || []
+        if (qNums.length > 0) {
+            const tNums = t.match(/\d+/g) || []
+            const tNumSet = new Set(tNums)
+            if (!qNums.every((n) => tNumSet.has(n))) return 0 // Query has numbers that title doesn't - bad match
+        }
+
+        // Prefer titles that start with the query
+        if (t.startsWith(q)) return 80
+
+        // Prefer titles that contain the full query
+        if (t.includes(q)) return 60
+
+        // Base score for partial matches
+        return 10
+    }
+
+    /**
      * Convert input to FTS5 queries (returns array of queries to try)
      */
     _toFtsQueries(input) {
@@ -606,7 +635,7 @@ export default class MovieActor {
      */
     _humanPicksMovie(query) {
         // Search for the movie
-        const movies = this.searchMovies(query, 5)
+        const movies = this.searchMovies(query, 10)
 
         if (movies.length === 0) {
             return {
@@ -616,8 +645,12 @@ export default class MovieActor {
             }
         }
 
+        // Sort by title match score to prefer exact/closer matches (e.g., "Die Hard 3" over "Die Hard")
+        const scored = movies.map((m) => ({ movie: m, score: this._scoreTitleMatch(query, m.primary_title) }))
+        scored.sort((a, b) => b.score - a.score)
+
         // Try to find a match that has the current actor
-        for (const movie of movies) {
+        for (const { movie } of scored) {
             if (this._validateActorInMovie(this.currentItem.nconst, movie.tconst)) {
                 // Check if already used
                 if (this.usedMovies.has(movie.tconst)) {
@@ -653,7 +686,7 @@ export default class MovieActor {
         }
 
         // Found movies but actor not in them
-        const bestMatch = movies[0]
+        const bestMatch = scored[0].movie
         return {
             success: false,
             found: true,

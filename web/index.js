@@ -20,6 +20,7 @@ let voiceEnabled = false
 let recognition = null
 let micReady = false
 let listeningIndicator = null
+let audioContext = null
 
 // Set up speech recognition if available
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -39,7 +40,22 @@ if (SpeechRecognition) {
     recognition.onresult = (event) => {
         gotResult = true
         hideListeningIndicator()
-        const text = event.results[0][0].transcript.trim()
+        let text = event.results[0][0].transcript.trim()
+
+        // Convert spoken number words to digits (1-9)
+        const numberWords = {
+            one: "1",
+            two: "2",
+            three: "3",
+            four: "4",
+            five: "5",
+            six: "6",
+            seven: "7",
+            eight: "8",
+            nine: "9"
+        }
+        text = text.replace(/\b(one|two|three|four|five|six|seven|eight|nine)\b/gi, (match) => numberWords[match.toLowerCase()])
+
         if (text && gameId) {
             addMessage(text, "user")
             socket.emit("input", { gameId, text })
@@ -100,6 +116,12 @@ async function enableVoice() {
         voiceEnabled = true
         micReady = true
         voiceCheckbox.checked = true
+
+        // Initialize AudioContext for ding sound (must be in user gesture context for iOS)
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)()
+        }
+
         console.log("[Voice] voiceEnabled:", voiceEnabled, "micReady:", micReady)
 
         // Speak the most recent system message
@@ -414,8 +436,37 @@ function speak(text, retries = 3) {
     }
 }
 
+function playDing() {
+    if (!audioContext) return
+
+    // Resume context if suspended (iOS requirement)
+    if (audioContext.state === "suspended") {
+        audioContext.resume()
+    }
+
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+
+    oscillator.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+
+    // Pleasant ding tone
+    oscillator.frequency.value = 880 // A5 note
+    oscillator.type = "sine"
+
+    // Quick fade in and out for a soft ding
+    const now = audioContext.currentTime
+    gainNode.gain.setValueAtTime(0, now)
+    gainNode.gain.linearRampToValueAtTime(0.3, now + 0.01)
+    gainNode.gain.linearRampToValueAtTime(0, now + 0.15)
+
+    oscillator.start(now)
+    oscillator.stop(now + 0.15)
+}
+
 function startListening() {
     if (voiceEnabled && micReady && recognition) {
+        playDing()
         try {
             recognition.start()
         } catch (_e) {
