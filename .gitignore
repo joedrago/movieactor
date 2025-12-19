@@ -4,3 +4,4 @@
 /data/imdb.db
 /data/*.tsv
 /data/*.tsv.gz
+/venv
