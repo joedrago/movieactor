@@ -1,6 +1,6 @@
 # MovieActor
 
-A toolkit for exploring and playing games with the IMDB dataset. Downloads IMDB's public data files and imports them into a local SQLite database optimized for searching movies and actors.
+A toolkit for exploring and playing games with movie/actor data from IMDB, enriched with TMDB cast data.
 
 ## Setup
 
@@ -8,89 +8,128 @@ A toolkit for exploring and playing games with the IMDB dataset. Downloads IMDB'
 # Install dependencies
 npm install
 
-# Build the database (downloads ~1.8GB, creates ~12-15GB database)
-npm run gendb
+# Build IMDB database (downloads ~1.8GB, creates ~12-15GB database)
+npm run imdb
+
+# Optionally enrich with TMDB cast data (requires Kaggle CLI)
+npm run tmdb
 ```
 
-The first run downloads all IMDB dataset files and imports them into `data/imdb.db`. Subsequent runs skip downloading unless files are missing (use `--force` to re-download).
+### IMDB Setup
 
-## Usage
-
-Once the database is built, you can query it with any SQLite client:
+Downloads directly from datasets.imdbws.com - no authentication required.
 
 ```bash
-sqlite3 data/imdb.db
+npm run imdb
 ```
 
-### Search for movies
+### TMDB Enrichment (Optional)
 
-```sql
--- Exact search
-SELECT * FROM title_basics
-WHERE primary_title LIKE '%Inception%' AND title_type = 'movie';
+Enriches the IMDB database with additional cast data from TMDB. This adds ~2.5M actor-movie links beyond IMDB's principal cast.
 
--- Fuzzy search (substring matching)
-SELECT t.* FROM title_basics_fts fts
-JOIN title_basics t ON fts.tconst = t.tconst
-WHERE fts.primary_title MATCH 'incep';
+Requires Kaggle CLI and API credentials:
+
+```bash
+# Install Kaggle CLI
+pip install kaggle
+
+# Set up API credentials
+# 1. Go to https://www.kaggle.com/settings
+# 2. Click "Create New Token" under API
+# 3. Save kaggle.json to ~/.kaggle/kaggle.json
+# 4. chmod 600 ~/.kaggle/kaggle.json
+
+# Enrich database (safe to re-run, idempotent)
+npm run tmdb
 ```
 
-### Search for actors
+## Playing the Game
 
-```sql
--- Exact search
-SELECT * FROM name_basics WHERE primary_name LIKE '%DiCaprio%';
+The Movie/Actor game is a two-player word association game where you take turns naming movies and actors:
 
--- Fuzzy search
-SELECT n.* FROM name_basics_fts fts
-JOIN name_basics n ON fts.nconst = n.nconst
-WHERE fts.primary_name MATCH 'dicaprio';
+- If shown an **actor**, name a movie they were in
+- If shown a **movie**, name an actor from it
+- No repeats within a round
+- Say "challenge" if you think there's no valid answer
+- First to win 5 rounds wins
+
+```bash
+npm run play
 ```
 
-### Find an actor's movies
+### Difficulty Levels
 
-```sql
-SELECT t.primary_title, t.start_year, p.characters, r.average_rating
-FROM name_basics n
-JOIN title_principals p ON n.nconst = p.nconst
-JOIN title_basics t ON p.tconst = t.tconst
-LEFT JOIN title_ratings r ON t.tconst = r.tconst
-WHERE n.primary_name = 'Leonardo DiCaprio'
-  AND t.title_type = 'movie'
-  AND p.category IN ('actor', 'actress')
-ORDER BY t.start_year DESC;
-```
+Difficulty controls what the computer "knows" - your answers are always validated against the full database.
 
-### Find a movie's cast
+| Difficulty | Movies | Actors | Description |
+|------------|--------|--------|-------------|
+| **Easy** | Post-1980, 100k+ votes | Top 3 billed | Modern blockbusters, leading stars only |
+| **Medium** | Post-1960, 10k+ votes | Top 10 billed | Classic films, main cast |
+| **Hard** | All years, 1k+ votes | Entire cast | Deep cuts, character actors |
 
-```sql
-SELECT n.primary_name, p.characters, p.ordering
-FROM title_basics t
-JOIN title_principals p ON t.tconst = p.tconst
-JOIN name_basics n ON p.nconst = n.nconst
-WHERE t.primary_title = 'Inception'
-  AND t.title_type = 'movie'
-  AND t.start_year = 2010
-ORDER BY p.ordering;
-```
+On Easy, the computer only knows movies like *The Dark Knight* or *Inception* and stars like Leonardo DiCaprio or Tom Hanks. On Hard, it knows obscure 1940s films and actors with single-scene appearances.
 
-## Documentation
+## Data Pipeline
 
-See [IMDB.md](IMDB.md) for complete documentation including:
-- Dataset file descriptions
-- Database schema
-- All available tables and indexes
-- FTS5 fuzzy search usage
-- More query examples
+The database uses IMDB as the primary source, optionally enriched with TMDB:
+
+1. **`npm run imdb`** - Downloads IMDB datasets and builds `data/imdb.db`
+   - ~12M titles (movies, TV, shorts, etc.)
+   - ~11M people (actors, directors, etc.)
+   - ~97M principal cast/crew links (~10 per title)
+
+2. **`npm run tmdb`** - Enriches `imdb.db` with TMDB cast data
+   - Downloads TMDB dataset (1M+ movies with cast names)
+   - Matches TMDB movies to IMDB by IMDB ID
+   - Looks up cast names in IMDB's actor database
+   - Adds ~2.5M new actor-movie links
+   - Idempotent: safe to run multiple times
+
+### Data Sources
+
+- **IMDB:** [IMDB Non-Commercial Datasets](https://datasets.imdbws.com/) - updated daily
+- **TMDB:** [Kaggle TMDB Dataset](https://www.kaggle.com/datasets/alanvourch/tmdb-movies-daily-updates) - updated daily
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
-| `npm run gendb` | Download IMDB data and build the database |
+| `npm run imdb` | Download IMDB data and build `data/imdb.db` |
+| `npm run tmdb` | Enrich `imdb.db` with TMDB cast data (idempotent) |
+| `npm run play` | Play the Movie/Actor game |
 | `npm run format` | Format code with Prettier |
 | `npm run lint` | Lint code with ESLint |
 
-## Data Source
+## Documentation
 
-Data is sourced from [IMDB Non-Commercial Datasets](https://datasets.imdbws.com/), provided by IMDb for non-commercial use.
+See [IMDB.md](IMDB.md) for complete database documentation including:
+- Dataset file descriptions
+- Database schema
+- All available tables and indexes
+- FTS5 fuzzy search usage
+- Query examples
+
+## Usage Examples
+
+```sql
+-- Fuzzy search for movies
+SELECT t.* FROM title_basics_fts fts
+JOIN title_basics t ON fts.tconst = t.tconst
+WHERE fts.primary_title MATCH 'incep';
+
+-- Find actor's movies
+SELECT t.primary_title, t.start_year, p.characters
+FROM name_basics n
+JOIN title_principals p ON n.nconst = p.nconst
+JOIN title_basics t ON p.tconst = t.tconst
+WHERE n.primary_name = 'Leonardo DiCaprio'
+  AND t.title_type = 'movie';
+
+-- Find movie's cast (includes TMDB-enriched cast)
+SELECT n.primary_name, p.category, p.characters
+FROM title_basics t
+JOIN title_principals p ON t.tconst = p.tconst
+JOIN name_basics n ON p.nconst = n.nconst
+WHERE t.primary_title = 'Inception'
+  AND t.title_type = 'movie';
+```
