@@ -15,7 +15,7 @@
                 font-family: system-ui, -apple-system, sans-serif;
                 background: #1a1a1a;
                 color: #e0e0e0;
-                height: 100vh;
+                height: 100dvh;
                 display: flex;
                 flex-direction: column;
             }
@@ -35,6 +35,7 @@
                 padding: 1rem;
                 display: flex;
                 flex-direction: column;
+                justify-content: flex-end;
                 gap: 0.75rem;
             }
 
@@ -231,7 +232,7 @@
             <div id="input-area">
                 <form id="input-form">
                     <input type="text" id="input" placeholder="Type your answer..." autocomplete="off" disabled />
-                    <button type="submit" id="submit" disabled>Send</button>
+                    <button type="submit" id="submit" disabled hidden>Send</button>
                 </form>
             </div>
         </div>
