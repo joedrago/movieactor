@@ -216,9 +216,6 @@ export default class Game {
             }
         }
 
-        lines.push("")
-        lines.push(this._formatScore(result.scores))
-
         if (result.gameWinner) {
             this.phase = "game_over"
             lines.push("")
@@ -243,8 +240,6 @@ export default class Game {
         }
 
         lines.push("I can't think of anything... you win this round!")
-        lines.push("")
-        lines.push(this._formatScore(state.scores))
 
         if (state.state === GAME_STATE.GAME_OVER) {
             this.phase = "game_over"
@@ -320,14 +315,10 @@ export default class Game {
         const item = result.matchedItem
         if (result.nextItemType === ITEM_TYPE.ACTOR) {
             const year = item.start_year ? ` from ${item.start_year}` : ""
-            return `How about "${item.primary_title}"${year}?\nName an actor from that movie.`
+            return `How about "${item.primary_title}"${year}?`
         } else {
-            return `I'll say ${item.primary_name}.\nName a movie they were in.`
+            return `I'll say ${item.primary_name}.`
         }
-    }
-
-    _formatScore(scores) {
-        return `Score: You ${scores[PLAYER.HUMAN]} - Computer ${scores[PLAYER.COMPUTER]}`
     }
 
     _formatGameOver(winner, scores) {

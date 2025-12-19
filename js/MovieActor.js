@@ -297,23 +297,60 @@ export default class MovieActor {
     }
 
     /**
-     * Normalize user input for searching
+     * Normalize user input for searching (light normalization, preserves punctuation for FTS)
      */
     _normalizeInput(input) {
+        return input.replace(/\s+/g, " ").trim()
+    }
+
+    /**
+     * Normalize for LIKE fallback (strips punctuation)
+     */
+    _normalizeForLike(input) {
         return input
             .toLowerCase()
-            .replace(/[^\w\s]/g, "") // Remove punctuation
-            .replace(/\s+/g, " ") // Collapse whitespace
+            .replace(/[^\w\s]/g, "")
+            .replace(/\s+/g, " ")
             .trim()
     }
 
     /**
-     * Convert normalized input to FTS5 query
+     * Convert input to FTS5 queries (returns array of queries to try)
      */
-    _toFtsQuery(input) {
-        // Escape quotes for FTS5
-        const escaped = input.replace(/"/g, '""')
-        return `"${escaped}"`
+    _toFtsQueries(input) {
+        const queries = []
+        const seen = new Set()
+
+        const addQuery = (q) => {
+            if (!seen.has(q)) {
+                seen.add(q)
+                queries.push(q)
+            }
+        }
+
+        const escape = (s) => s.replace(/"/g, '""')
+
+        // Try variations: original, then with punctuation removed
+        const variations = [input]
+
+        // Remove hyphens and other punctuation (but keep letters, numbers, spaces)
+        const noPunctuation = input.replace(/[^\w\s]/g, "")
+        if (noPunctuation !== input) variations.push(noPunctuation)
+
+        for (const variant of variations) {
+            // As phrase
+            addQuery(`"${escape(variant)}"`)
+
+            // Individual words with AND (skip words < 3 chars, trigrams can't match them)
+            const words = variant.split(/\s+/).filter((w) => w.length >= 3)
+            if (words.length > 1) {
+                addQuery(words.map((w) => `"${escape(w)}"`).join(" AND "))
+            } else if (words.length === 1) {
+                addQuery(`"${escape(words[0])}"`)
+            }
+        }
+
+        return queries
     }
 
     /**
@@ -345,20 +382,23 @@ export default class MovieActor {
 
         this._log("Searching actors:", normalized)
 
-        // Try FTS5 first
-        try {
-            const ftsQuery = this._toFtsQuery(normalized)
-            const results = this.stmtSearchActors.all(ftsQuery, limit)
-            if (results.length > 0) {
-                this._log("FTS5 found:", results.length, "actors")
-                return results
+        // Try FTS5 queries
+        const ftsQueries = this._toFtsQueries(normalized)
+        for (const ftsQuery of ftsQueries) {
+            try {
+                const results = this.stmtSearchActors.all(ftsQuery, limit)
+                if (results.length > 0) {
+                    this._log("FTS5 found:", results.length, "actors with query:", ftsQuery)
+                    return results
+                }
+            } catch (e) {
+                this._log("FTS5 search failed:", e.message)
             }
-        } catch (e) {
-            this._log("FTS5 search failed:", e.message)
         }
 
         // Fallback to LIKE
-        const likePattern = `%${normalized}%`
+        const likeNormalized = this._normalizeForLike(query)
+        const likePattern = `%${likeNormalized}%`
         const results = this.stmtSearchActorsLike.all(likePattern, limit)
         this._log("LIKE found:", results.length, "actors")
         return results
@@ -373,20 +413,23 @@ export default class MovieActor {
 
         this._log("Searching movies:", normalized)
 
-        // Try FTS5 first
-        try {
-            const ftsQuery = this._toFtsQuery(normalized)
-            const results = this.stmtSearchMovies.all(ftsQuery, limit)
-            if (results.length > 0) {
-                this._log("FTS5 found:", results.length, "movies")
-                return results
+        // Try FTS5 queries
+        const ftsQueries = this._toFtsQueries(normalized)
+        for (const ftsQuery of ftsQueries) {
+            try {
+                const results = this.stmtSearchMovies.all(ftsQuery, limit)
+                if (results.length > 0) {
+                    this._log("FTS5 found:", results.length, "movies with query:", ftsQuery)
+                    return results
+                }
+            } catch (e) {
+                this._log("FTS5 search failed:", e.message)
             }
-        } catch (e) {
-            this._log("FTS5 search failed:", e.message)
         }
 
         // Fallback to LIKE
-        const likePattern = `%${normalized}%`
+        const likeNormalized = this._normalizeForLike(query)
+        const likePattern = `%${likeNormalized}%`
         const results = this.stmtSearchMoviesLike.all(likePattern, limit)
         this._log("LIKE found:", results.length, "movies")
         return results

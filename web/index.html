@@ -61,6 +61,12 @@
                 align-self: flex-end;
             }
 
+            .message.listening {
+                background: #3d5a80;
+                color: white;
+                align-self: flex-end;
+            }
+
             #status {
                 padding: 0.5rem 1rem;
                 background: #252525;
@@ -171,18 +177,11 @@
                 background: #444;
                 cursor: not-allowed;
             }
-
-            .connecting {
-                text-align: center;
-                padding: 2rem;
-                color: #888;
-            }
         </style>
     </head>
     <body>
         <div id="app">
             <div id="chat">
-                <div class="connecting">Connecting...</div>
             </div>
             <div id="status">
                 <span class="current-item"></span>

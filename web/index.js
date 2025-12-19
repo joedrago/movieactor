@@ -3,7 +3,6 @@
  */
 
 const STORAGE_KEY = "movieactor_game_id"
-const VOICE_STORAGE_KEY = "movieactor_voice_enabled"
 
 // DOM elements
 const chat = document.getElementById("chat")
@@ -19,6 +18,7 @@ let socket = null
 let voiceEnabled = false
 let recognition = null
 let micReady = false
+let listeningIndicator = null
 
 // Set up speech recognition if available
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -32,10 +32,12 @@ if (SpeechRecognition) {
 
     recognition.onstart = () => {
         gotResult = false
+        showListeningIndicator()
     }
 
     recognition.onresult = (event) => {
         gotResult = true
+        hideListeningIndicator()
         const text = event.results[0][0].transcript.trim()
         if (text && gameId) {
             addMessage(text, "user")
@@ -67,14 +69,6 @@ if (SpeechRecognition) {
     }
 }
 
-// Initialize voice checkbox state
-async function initVoice() {
-    const savedVoice = localStorage.getItem(VOICE_STORAGE_KEY) === "true"
-    if (savedVoice) {
-        await enableVoice()
-    }
-}
-
 async function enableVoice() {
     if (!recognition) {
         alert("Speech recognition is not supported in this browser.")
@@ -88,7 +82,14 @@ async function enableVoice() {
         voiceEnabled = true
         micReady = true
         voiceCheckbox.checked = true
-        localStorage.setItem(VOICE_STORAGE_KEY, "true")
+
+        // Speak the most recent system message
+        const messages = chat.querySelectorAll(".message.system")
+        if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1]
+            speak(lastMessage.textContent)
+        }
+
         return true
     } catch (err) {
         console.error("Microphone access denied:", err)
@@ -102,7 +103,7 @@ function disableVoice() {
     voiceEnabled = false
     micReady = false
     voiceCheckbox.checked = false
-    localStorage.setItem(VOICE_STORAGE_KEY, "false")
+    hideListeningIndicator()
     if (recognition) {
         recognition.abort()
     }
@@ -118,10 +119,7 @@ voiceCheckbox.addEventListener("change", async () => {
 })
 
 // Initialize
-async function init() {
-    // Initialize voice before connecting socket so it's ready for reconnection
-    await initVoice()
-
+function init() {
     socket = io()
 
     socket.on("connect", () => {
@@ -152,7 +150,6 @@ async function init() {
     socket.on("reconnected", (data) => {
         gameId = data.gameId
         setInputEnabled(true)
-        addMessage("(Reconnected to your game)", "system")
         console.log("Reconnected to game:", gameId)
     })
 
@@ -200,6 +197,22 @@ function addMessage(text, type) {
     chat.appendChild(msg)
 }
 
+function showListeningIndicator() {
+    if (listeningIndicator) return
+    listeningIndicator = document.createElement("div")
+    listeningIndicator.className = "message listening"
+    listeningIndicator.textContent = "Listening..."
+    chat.appendChild(listeningIndicator)
+    scrollToBottom()
+}
+
+function hideListeningIndicator() {
+    if (listeningIndicator) {
+        listeningIndicator.remove()
+        listeningIndicator = null
+    }
+}
+
 function updateStatus(state) {
     if (!state) {
         statusEl.querySelector(".current-item").textContent = ""
@@ -238,13 +251,20 @@ function scrollToBottom() {
     chat.scrollTop = chat.scrollHeight
 }
 
+function prepareTextForSpeech(text) {
+    // Replace multiple newlines with a longer pause (period + space)
+    // Replace single newlines with a short pause (comma + space)
+    return text.replace(/\n\n+/g, ". ").replace(/\n/g, ", ").replace(/\s+/g, " ").trim()
+}
+
 function speak(text, retries = 3) {
     if (!voiceEnabled || !window.speechSynthesis) return
 
     // Cancel any ongoing speech
     window.speechSynthesis.cancel()
 
-    const utterance = new SpeechSynthesisUtterance(text)
+    const spokenText = prepareTextForSpeech(text)
+    const utterance = new SpeechSynthesisUtterance(spokenText)
     utterance.rate = 1.0
     utterance.pitch = 1.0
 
