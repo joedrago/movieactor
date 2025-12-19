@@ -4,6 +4,9 @@ import globals from "globals"
 export default [
     js.configs.recommended,
     {
+        ignores: ["venv/**", "node_modules/**"]
+    },
+    {
         files: ["**/*.{js,mjs,cjs}"],
         languageOptions: { globals: globals.node },
         rules: {
@@ -16,5 +19,9 @@ export default [
                 }
             ]
         }
+    },
+    {
+        files: ["web/**/*.js"],
+        languageOptions: { globals: { ...globals.browser, io: "readonly" } }
     }
 ]
