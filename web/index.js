@@ -324,7 +324,14 @@ function speak(text, retries = 3) {
     if (voices.length > 5) console.log(`[TTS]   ... and ${voices.length - 5} more`)
 
     // Check current state
-    console.log("[TTS] Current state - speaking:", window.speechSynthesis.speaking, "pending:", window.speechSynthesis.pending, "paused:", window.speechSynthesis.paused)
+    console.log(
+        "[TTS] Current state - speaking:",
+        window.speechSynthesis.speaking,
+        "pending:",
+        window.speechSynthesis.pending,
+        "paused:",
+        window.speechSynthesis.paused
+    )
 
     // Cancel any ongoing speech
     console.log("[TTS] Calling cancel()")
@@ -380,7 +387,12 @@ function speak(text, retries = 3) {
 
     console.log("[TTS] Calling speechSynthesis.speak()")
     window.speechSynthesis.speak(utterance)
-    console.log("[TTS] speak() called, state - speaking:", window.speechSynthesis.speaking, "pending:", window.speechSynthesis.pending)
+    console.log(
+        "[TTS] speak() called, state - speaking:",
+        window.speechSynthesis.speaking,
+        "pending:",
+        window.speechSynthesis.pending
+    )
 
     // Workaround for Chrome bug where long text can cause TTS to stop
     // Keep speechSynthesis alive by resuming periodically

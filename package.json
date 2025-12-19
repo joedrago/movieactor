@@ -6,6 +6,7 @@
   "scripts": {
     "imdb": "node scripts/rebuild_imdb.js",
     "tmdb": "node scripts/rebuild_tmdb.js",
+    "fts": "node scripts/rebuild_fts.js",
     "play": "node js/cli.js",
     "web": "node server.js",
     "format": "prettier --write \"**/*.js\"",

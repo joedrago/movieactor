@@ -138,32 +138,6 @@ export default class MovieActor {
             LIMIT ?
         `)
 
-        // LIKE-based fallback search for actors
-        this.stmtSearchActorsLike = this.db.prepare(`
-            SELECT n.nconst, n.primary_name, n.birth_year,
-                   COUNT(DISTINCT tp.tconst) as movie_count
-            FROM name_basics n
-            JOIN title_principals tp ON n.nconst = tp.nconst
-            JOIN title_basics t ON tp.tconst = t.tconst
-            WHERE LOWER(n.primary_name) LIKE ?
-              AND tp.category IN ('actor', 'actress')
-              AND t.title_type = 'movie'
-            GROUP BY n.nconst
-            ORDER BY movie_count DESC
-            LIMIT ?
-        `)
-
-        // LIKE-based fallback search for movies
-        this.stmtSearchMoviesLike = this.db.prepare(`
-            SELECT t.tconst, t.primary_title, t.start_year, r.num_votes
-            FROM title_basics t
-            LEFT JOIN title_ratings r ON t.tconst = r.tconst
-            WHERE LOWER(t.primary_title) LIKE ?
-              AND t.title_type = 'movie'
-            ORDER BY COALESCE(r.num_votes, 0) DESC
-            LIMIT ?
-        `)
-
         // Get actors in a movie (with ordering filter)
         this.stmtGetMovieCast = this.db.prepare(`
             SELECT n.nconst, n.primary_name, n.birth_year, tp.ordering
@@ -194,7 +168,6 @@ export default class MovieActor {
             FROM title_principals tp
             WHERE tp.tconst = ?
               AND tp.nconst = ?
-              AND tp.category IN ('actor', 'actress')
         `)
 
         // Get random popular actor (for starting)
@@ -300,14 +273,11 @@ export default class MovieActor {
     }
 
     /**
-     * Normalize for LIKE fallback (strips punctuation)
+     * Normalize text for FTS matching - removes diacritics/accents
+     * This allows "zoe" to match "Zoë", "cafe" to match "café", etc.
      */
-    _normalizeForLike(input) {
-        return input
-            .toLowerCase()
-            .replace(/[^\w\s]/g, "")
-            .replace(/\s+/g, " ")
-            .trim()
+    _normalizeDiacritics(text) {
+        return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     }
 
     /**
@@ -326,12 +296,15 @@ export default class MovieActor {
 
         const escape = (s) => s.replace(/"/g, '""')
 
-        // Try variations: original, then with punctuation removed
-        const variations = [input]
+        // Normalize diacritics first (so "zoe" matches "Zoë" in normalized FTS)
+        const normalized = this._normalizeDiacritics(input)
+
+        // Try variations: normalized, then with punctuation removed
+        const variations = [normalized]
 
         // Remove hyphens and other punctuation (but keep letters, numbers, spaces)
-        const noPunctuation = input.replace(/[^\w\s]/g, "")
-        if (noPunctuation !== input) variations.push(noPunctuation)
+        const noPunctuation = normalized.replace(/[^\w\s]/g, "")
+        if (noPunctuation !== normalized) variations.push(noPunctuation)
 
         for (const variant of variations) {
             // As phrase
@@ -392,12 +365,8 @@ export default class MovieActor {
             }
         }
 
-        // Fallback to LIKE
-        const likeNormalized = this._normalizeForLike(query)
-        const likePattern = `%${likeNormalized}%`
-        const results = this.stmtSearchActorsLike.all(likePattern, limit)
-        this._log("LIKE found:", results.length, "actors")
-        return results
+        this._log("No actors found")
+        return []
     }
 
     /**
@@ -423,12 +392,8 @@ export default class MovieActor {
             }
         }
 
-        // Fallback to LIKE
-        const likeNormalized = this._normalizeForLike(query)
-        const likePattern = `%${likeNormalized}%`
-        const results = this.stmtSearchMoviesLike.all(likePattern, limit)
-        this._log("LIKE found:", results.length, "movies")
-        return results
+        this._log("No movies found")
+        return []
     }
 
     /**

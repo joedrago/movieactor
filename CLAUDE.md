@@ -29,6 +29,7 @@ The database uses IMDB as the primary data source, optionally enriched with addi
 - `IMDB.md` - Complete documentation of the IMDB database schema
 - `scripts/rebuild_imdb.js` - Script to download and rebuild IMDB database
 - `scripts/rebuild_tmdb.js` - Script to enrich IMDB database with TMDB cast data
+- `scripts/rebuild_fts.js` - Script to rebuild FTS tables with diacritic normalization
 - `js/MovieActor.js` - Core game class (no I/O, used by UIs)
 - `js/cli.js` - CLI interface for playing the game
 
@@ -61,6 +62,7 @@ This expands cast coverage beyond IMDB's ~10 principal cast per movie while main
 
 - `npm run imdb` - Download IMDB data and build `data/imdb.db`
 - `npm run tmdb` - Enrich `imdb.db` with TMDB cast data (requires Kaggle CLI, idempotent)
+- `npm run fts` - Rebuild FTS tables with diacritic normalization (allows "zoe" to match "Zoë")
 - `npm run play` - Play the Movie/Actor game
 - `npm run format` - Format JS files with Prettier
 - `npm run lint` - Lint JS files with ESLint

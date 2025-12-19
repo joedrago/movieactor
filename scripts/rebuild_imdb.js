@@ -227,6 +227,14 @@ function createIndexes(db) {
 }
 
 /**
+ * Normalize text by removing diacritics/accents
+ * This allows "zoe" to match "Zoë", "cafe" to match "café", etc.
+ */
+function normalizeDiacritics(text) {
+    return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+}
+
+/**
  * Create FTS5 full-text search tables for fuzzy searching
  */
 function createFtsTables(db) {
@@ -242,12 +250,17 @@ function createFtsTables(db) {
     );
   `)
 
-    // Populate from name_basics
-    console.log("  Populating name_basics_fts...")
-    db.exec(`
-    INSERT INTO name_basics_fts (nconst, primary_name)
-    SELECT nconst, primary_name FROM name_basics;
-  `)
+    // Populate from name_basics with normalized (diacritic-free) names
+    // This allows "zoe kravitz" to match "Zoë Kravitz"
+    console.log("  Populating name_basics_fts (with diacritic normalization)...")
+    const insertNameFts = db.prepare("INSERT INTO name_basics_fts (nconst, primary_name) VALUES (?, ?)")
+    const names = db.prepare("SELECT nconst, primary_name FROM name_basics").all()
+    const insertNamesTransaction = db.transaction((rows) => {
+        for (const row of rows) {
+            insertNameFts.run(row.nconst, normalizeDiacritics(row.primary_name))
+        }
+    })
+    insertNamesTransaction(names)
 
     // FTS5 table for searching movie/title names
     db.exec(`
@@ -258,13 +271,20 @@ function createFtsTables(db) {
     );
   `)
 
-    // Populate from title_basics (only movies and TV series, not episodes)
-    console.log("  Populating title_basics_fts...")
-    db.exec(`
-    INSERT INTO title_basics_fts (tconst, primary_title)
-    SELECT tconst, primary_title FROM title_basics
-    WHERE title_type IN ('movie', 'tvSeries', 'tvMiniSeries', 'tvMovie', 'video');
-  `)
+    // Populate from title_basics with normalized titles (only movies and TV series, not episodes)
+    console.log("  Populating title_basics_fts (with diacritic normalization)...")
+    const insertTitleFts = db.prepare("INSERT INTO title_basics_fts (tconst, primary_title) VALUES (?, ?)")
+    const titles = db
+        .prepare(
+            "SELECT tconst, primary_title FROM title_basics WHERE title_type IN ('movie', 'tvSeries', 'tvMiniSeries', 'tvMovie', 'video')"
+        )
+        .all()
+    const insertTitlesTransaction = db.transaction((rows) => {
+        for (const row of rows) {
+            insertTitleFts.run(row.tconst, normalizeDiacritics(row.primary_title))
+        }
+    })
+    insertTitlesTransaction(titles)
 
     console.log("Full-text search tables created successfully!")
 }
