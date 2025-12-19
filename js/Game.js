@@ -97,9 +97,18 @@ export default class Game {
     }
 
     /**
-     * Get initial welcome message
+     * Get initial welcome message (terse version)
      */
     getWelcome() {
+        const output = 'MOVIE / ACTOR\n\nPick a difficulty: easy, medium, or hard\n(Say "help" for instructions)'
+
+        return this._respond(output)
+    }
+
+    /**
+     * Get full help/instructions message
+     */
+    getHelp() {
         const output = [
             "MOVIE / ACTOR",
             "",
@@ -107,12 +116,12 @@ export default class Game {
             'If you get stuck, say "challenge"',
             "First to win 5 rounds wins.",
             "",
-            "How difficult would you like the game?",
+            "Difficulty levels:",
             "  Easy   - Modern blockbusters, leading stars only",
             "  Medium - Classic films, main cast",
             "  Hard   - Deep cuts, entire cast",
             "",
-            "Type easy, medium, or hard:"
+            "Pick a difficulty: easy, medium, or hard"
         ].join("\n")
 
         return this._respond(output)
@@ -129,10 +138,15 @@ export default class Game {
     }
 
     _handleDifficultySelection(input) {
+        // Check for help request
+        if (/^help$/i.test(input.trim())) {
+            return this.getHelp()
+        }
+
         const difficulty = detectDifficulty(input)
 
         if (!difficulty) {
-            return this._respond("I didn't catch that. Try saying easy, medium, or hard.")
+            return this._respond("I didn't catch that. Try easy, medium, or hard.")
         }
 
         // Create game instance

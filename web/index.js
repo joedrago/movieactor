@@ -3,6 +3,7 @@
  */
 
 const STORAGE_KEY = "movieactor_game_id"
+const VOICE_STORAGE_KEY = "movieactor_voice_enabled"
 
 // DOM elements
 const chat = document.getElementById("chat")
@@ -10,13 +11,117 @@ const statusEl = document.getElementById("status")
 const inputForm = document.getElementById("input-form")
 const input = document.getElementById("input")
 const submitBtn = document.getElementById("submit")
+const voiceCheckbox = document.getElementById("tts-checkbox")
 
 // State
 let gameId = null
 let socket = null
+let voiceEnabled = false
+let recognition = null
+let micReady = false
+
+// Set up speech recognition if available
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+let gotResult = false
+
+if (SpeechRecognition) {
+    recognition = new SpeechRecognition()
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.lang = "en-US"
+
+    recognition.onstart = () => {
+        gotResult = false
+    }
+
+    recognition.onresult = (event) => {
+        gotResult = true
+        const text = event.results[0][0].transcript.trim()
+        if (text && gameId) {
+            addMessage(text, "user")
+            socket.emit("input", { gameId, text })
+            scrollToBottom()
+        }
+    }
+
+    recognition.onerror = (event) => {
+        // "no-speech" and "aborted" are expected when user is quiet
+        if (event.error !== "no-speech" && event.error !== "aborted") {
+            console.log("Speech recognition error:", event.error)
+        }
+    }
+
+    recognition.onend = () => {
+        // If voice is still enabled and we didn't get a result, restart listening
+        if (voiceEnabled && micReady && !gotResult) {
+            setTimeout(() => {
+                if (voiceEnabled && micReady) {
+                    try {
+                        recognition.start()
+                    } catch (_e) {
+                        // Ignore - may already be running
+                    }
+                }
+            }, 100)
+        }
+    }
+}
+
+// Initialize voice checkbox state
+async function initVoice() {
+    const savedVoice = localStorage.getItem(VOICE_STORAGE_KEY) === "true"
+    if (savedVoice) {
+        await enableVoice()
+    }
+}
+
+async function enableVoice() {
+    if (!recognition) {
+        alert("Speech recognition is not supported in this browser.")
+        voiceCheckbox.checked = false
+        return false
+    }
+
+    try {
+        // Request microphone access
+        await navigator.mediaDevices.getUserMedia({ audio: true })
+        voiceEnabled = true
+        micReady = true
+        voiceCheckbox.checked = true
+        localStorage.setItem(VOICE_STORAGE_KEY, "true")
+        return true
+    } catch (err) {
+        console.error("Microphone access denied:", err)
+        alert("Microphone access is required for voice mode.")
+        voiceCheckbox.checked = false
+        return false
+    }
+}
+
+function disableVoice() {
+    voiceEnabled = false
+    micReady = false
+    voiceCheckbox.checked = false
+    localStorage.setItem(VOICE_STORAGE_KEY, "false")
+    if (recognition) {
+        recognition.abort()
+    }
+    window.speechSynthesis.cancel()
+}
+
+voiceCheckbox.addEventListener("change", async () => {
+    if (voiceCheckbox.checked) {
+        await enableVoice()
+    } else {
+        disableVoice()
+    }
+})
 
 // Initialize
-function init() {
+async function init() {
+    // Initialize voice before connecting socket so it's ready for reconnection
+    await initVoice()
+
     socket = io()
 
     socket.on("connect", () => {
@@ -61,6 +166,7 @@ function init() {
         updateStatus(data.state)
         setInputEnabled(true)
         scrollToBottom()
+        speak(data.output)
     })
 
     socket.on("error", (data) => {
@@ -130,6 +236,57 @@ function setInputEnabled(enabled) {
 
 function scrollToBottom() {
     chat.scrollTop = chat.scrollHeight
+}
+
+function speak(text, retries = 3) {
+    if (!voiceEnabled || !window.speechSynthesis) return
+
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel()
+
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.rate = 1.0
+    utterance.pitch = 1.0
+
+    // Handle errors with retry
+    utterance.onerror = (event) => {
+        console.log("TTS error:", event.error)
+        if (retries > 0) {
+            console.log(`Retrying TTS... (${retries} attempts left)`)
+            setTimeout(() => speak(text, retries - 1), 200)
+        } else {
+            // All retries exhausted, still start listening
+            startListening()
+        }
+    }
+
+    // When speech ends, start listening
+    utterance.onend = () => {
+        startListening()
+    }
+
+    window.speechSynthesis.speak(utterance)
+
+    // Workaround for Chrome bug where long text can cause TTS to stop
+    // Keep speechSynthesis alive by resuming periodically
+    const keepAlive = setInterval(() => {
+        if (window.speechSynthesis.speaking) {
+            window.speechSynthesis.pause()
+            window.speechSynthesis.resume()
+        } else {
+            clearInterval(keepAlive)
+        }
+    }, 10000)
+}
+
+function startListening() {
+    if (voiceEnabled && micReady && recognition) {
+        try {
+            recognition.start()
+        } catch (_e) {
+            // Recognition may already be running
+        }
+    }
 }
 
 // Start
